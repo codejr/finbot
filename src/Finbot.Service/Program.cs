@@ -1,8 +1,11 @@
 ﻿using System;
 using System.Reflection;
 using System.Threading.Tasks;
+using Discord.Commands;
+using Discord.WebSocket;
 using Finbot.Core;
 using Finbot.Core.IEX;
+using Finbot.Core.Portfolios;
 using Finbot.Service;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
@@ -42,7 +45,10 @@ namespace finbot
             {
                 var config = hostContext.Configuration;
 
-                services.AddSingleton<IPortfolioManager, PortfolioManager>();
+                services.AddSingleton<IPortfolioService, PortfolioService>();
+
+                services.AddSingleton<DiscordSocketClient>();
+                services.AddSingleton<CommandService>();
 
                 services.AddTransient<IFinDataClient, FinDataClient>(
                     serviceManager =>
@@ -59,11 +65,8 @@ namespace finbot
                     serviceManager =>
                     {
                         var token = config.GetValue<string>("discord:token");
-                        var finCLient = serviceManager.GetService<IFinDataClient>();
-                        var logger = serviceManager.GetService<ILogger<FinbotBrain>>();
-                        var portfolioManager = serviceManager.GetService<IPortfolioManager>();
 
-                        return new FinbotBrain(token, finCLient, logger, portfolioManager);
+                        return new FinbotBrain(token, serviceManager);
                     });
 
                 services.AddHostedService<FinbotService>();

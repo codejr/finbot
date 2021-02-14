@@ -6,9 +6,9 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
 
-namespace Finbot.Core
+namespace Finbot.Core.Portfolios
 {
-    public class PortfolioManager : IPortfolioManager
+    public class PortfolioService : IPortfolioService
     {
         private const decimal defaultBalance = 100_000;
 
@@ -16,7 +16,7 @@ namespace Finbot.Core
 
         private IDictionary<ulong, Portfolio> Portfolios { get; set; } = new Dictionary<ulong, Portfolio>();
 
-        public PortfolioManager(IFinDataClient client)
+        public PortfolioService(IFinDataClient client)
         {
             this.client = client;
         }
@@ -51,8 +51,10 @@ namespace Finbot.Core
             return await EnrichPortfolioAsync(Portfolios[userId]);
         }
 
-        public async Task MarketBuy(ulong userId, Trade trade)
+        public async Task<ISecurityPrice> MarketBuy(ulong userId, Trade trade)
         {
+            // Gonna stop shorts until I can figure out how to charge margin 
+            // and stop infinite leverage.
             if (trade.Quantity <= 0) throw new Exception("Cannot complete short trades.");
 
             var executionPrice = await GetPriceAsync(trade.Symbol, trade.SecurityType);
@@ -87,6 +89,8 @@ namespace Finbot.Core
                 position.LatestPrice = executionPrice.Price ?? 0;
                 position.AveragePrice = oldWeightedPrice + newWeightedPrice;
             }
+
+            return executionPrice;
         }
     }
 }

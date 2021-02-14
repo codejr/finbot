@@ -1,11 +1,13 @@
 ﻿using Discord;
+using Discord.Commands;
 using Discord.WebSocket;
 using Finbot.Core.IEX;
-using Finbot.Core.Models;
 using Microsoft.Extensions.Logging;
 using System;
 using System.Threading;
 using System.Threading.Tasks;
+using Microsoft.Extensions.DependencyInjection;
+using Finbot.Core.Portfolios;
 
 namespace Finbot.Core
 {
@@ -13,31 +15,39 @@ namespace Finbot.Core
     {
         private readonly DiscordSocketClient client;
 
+        private readonly CommandService commands;
+
         private readonly IFinDataClient finDataClient;
 
         private readonly ILogger<FinbotBrain> logger;
 
-        private readonly IPortfolioManager portfolioManager;
+        private readonly IPortfolioService portfolioManager;
+
+        private readonly IServiceProvider services;
 
         private readonly string token;
 
-        public FinbotBrain(string token,
-            IFinDataClient finDataClient,
-            ILogger<FinbotBrain> logger,
-            IPortfolioManager portfolioManager)
+        public FinbotBrain(string token, IServiceProvider services)
         {
             this.token = token;
-            this.logger = logger;
-            this.portfolioManager = portfolioManager;
-            this.finDataClient = finDataClient;
-            client = new DiscordSocketClient();
-            client.Log += LogAsync;
-            client.Ready += ReadyAsync;
-            client.MessageReceived += MessageReceivedAsync;
+            this.services = services;
+            this.logger = services.GetRequiredService<ILogger<FinbotBrain>>();
+            this.portfolioManager = services.GetRequiredService<IPortfolioService>();
+            this.finDataClient = services.GetRequiredService<IFinDataClient>();
+            this.client = services.GetRequiredService<DiscordSocketClient>();
+            this.commands = services.GetRequiredService<CommandService>();
         }
 
         public async Task RunAsync(CancellationToken cancellationToken)
         {
+            this.client.Log += LogAsync;
+            this.client.Ready += ReadyAsync;
+            this.client.MessageReceived += MessageReceivedAsync;
+
+            this.commands.CommandExecuted += CommandExecutedAsync;
+            
+            await this.commands.AddModulesAsync(typeof(FinbotBrain).Assembly, services);
+
             await client.LoginAsync(TokenType.Bot, token);
             await client.StartAsync();
 
@@ -79,60 +89,33 @@ namespace Finbot.Core
             return Task.CompletedTask;
         }
 
-        // TODO: Clean this up with proper command system
-        private async Task MessageReceivedAsync(SocketMessage message)
+        public async Task CommandExecutedAsync(Optional<CommandInfo> command, ICommandContext context, IResult result)
         {
-            logger.LogDebug($"Received Message: {message.Content}");
-
-            if (message.Author.Id == client.CurrentUser.Id)
+            if (!command.IsSpecified)
                 return;
 
-            if (message.Content == "!ping")
-                await message.Channel.SendMessageAsync("pong!");
+            if (result.IsSuccess)
+                return;
 
-            if (message.Content.StartsWith("!pricecrypto"))
+            await context.Channel.SendMessageAsync($"Error: {result.ErrorReason}");
+        }
+
+        private async Task MessageReceivedAsync(SocketMessage rawMessage)
+        {
+            logger.LogDebug($"Received Message: {rawMessage.Content}");
+
+            int argPos = 0;
+
+            // Ignore non-user messages
+            if (rawMessage is not SocketUserMessage message ||
+                message.Source != MessageSource.User ||
+                !message.HasCharPrefix('!', ref argPos))
             {
-                var symbol = message.Content.Split(' ')[1];
-
-                var priceResponce = await finDataClient.GetCryptoPriceAsync(symbol);
-
-                await message.Channel.SendMessageAsync($":moneybag: Price for **{priceResponce.Symbol}** at **{priceResponce.Price?.ToString("C")}**");
+                return;
             }
 
-            if (message.Content.StartsWith("!price"))
-            {
-                var symbol = message.Content.Split(' ')[1];
-
-                var priceResponce = await finDataClient.GetPriceAsync(symbol);
-
-                await message.Channel.SendMessageAsync($":moneybag: Price for **{priceResponce.Symbol}** at **{priceResponce.Price?.ToString("C")}**");
-            }
-
-            if (message.Content == "!portfolio")
-            {
-                var portfolio = await portfolioManager.GetPortfolioAsync(message.Author.Id);
-
-                await message.Channel.SendMessageAsync(portfolio.ToString());
-            }
-
-            if (message.Content.StartsWith("!buy"))
-            {
-                var split = message.Content.Split(' ');
-                var symbol = split[1];
-                var quantity = decimal.Parse(split[2]);
-                var securityType = message.Content.StartsWith("!buycrypto") ? SecurityType.Crypto : SecurityType.Stock;
-
-                var trade = new Trade() { Quantity = quantity, Symbol = symbol, SecurityType = securityType };
-                try
-                {
-                    await portfolioManager.MarketBuy(message.Author.Id, trade);
-                    await message.Channel.SendMessageAsync($"Trade executed.");
-                }
-                catch (Exception e)
-                {
-                    await message.Channel.SendMessageAsync($"Unknown Error: {e.Message}");
-                }
-            }
+            var context = new SocketCommandContext(client, message);
+            await commands.ExecuteAsync(context, argPos, services);
         }
     }
 }
