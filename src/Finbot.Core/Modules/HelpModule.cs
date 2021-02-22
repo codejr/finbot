@@ -21,7 +21,7 @@ namespace Finbot.Core.Modules
         public async Task Help()
         {
             var commands = commandService.Commands.ToList();
-            var embedBuilder = new EmbedBuilder().WithTitle("Help");
+            var embedBuilder = new EmbedBuilder().WithTitle("Help").WithColor(Color.Green);
 
             foreach (var command in commands)
             {

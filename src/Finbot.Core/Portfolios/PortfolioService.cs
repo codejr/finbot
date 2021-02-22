@@ -1,8 +1,10 @@
 ﻿using Finbot.Core.IEX;
 using Finbot.Core.IEX.Models;
 using Finbot.Core.Models;
+using Finbot.Data;
+using Finbot.Data.Models;
+using Microsoft.EntityFrameworkCore;
 using System;
-using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
 
@@ -14,11 +16,12 @@ namespace Finbot.Core.Portfolios
 
         private readonly IFinDataClient client;
 
-        private IDictionary<ulong, Portfolio> Portfolios { get; set; } = new Dictionary<ulong, Portfolio>();
+        private readonly FinbotDataContext db;
 
-        public PortfolioService(IFinDataClient client)
+        public PortfolioService(IFinDataClient client, FinbotDataContext db)
         {
             this.client = client;
+            this.db = db;
         }
 
         private async Task<ISecurityPrice> GetPriceAsync(string symbol, SecurityType securityType)
@@ -31,11 +34,11 @@ namespace Finbot.Core.Portfolios
         private async Task<Portfolio> EnrichPortfolioAsync(Portfolio portfolio)
         {
             var secPrices = (await Task.WhenAll(portfolio.Positions.Select(m => GetPriceAsync(m.Symbol, m.SecurityType))))
-                .ToDictionary(m => m.Symbol, m => m.Price);
+                .ToDictionary(m => m.Symbol.ToUpper(), m => m.Price);
 
             foreach (var position in portfolio.Positions)
             {
-                position.LatestPrice = secPrices[position.Symbol] ?? 0;
+                position.LatestPrice = secPrices[position.Symbol.ToUpper()] ?? 0;
             }
 
             return portfolio;
@@ -43,12 +46,25 @@ namespace Finbot.Core.Portfolios
 
         public async Task<Portfolio> GetPortfolioAsync(ulong userId)
         {
-            if (!Portfolios.ContainsKey(userId))
+            var uid = userId.ToString();
+
+            var portfolio = await db.Portfolios
+                .AsQueryable()
+                .Include(m => m.Positions)
+                .FirstOrDefaultAsync(m => m.DiscordUserId == uid);
+
+            if (portfolio == null)
             {
-                Portfolios.Add(userId, new Portfolio() { UserId = userId, CashBalance = defaultBalance });
+                portfolio = new Portfolio() { DiscordUserId = userId.ToString(), CashBalance = defaultBalance };
+                await db.Portfolios.AddAsync(portfolio);
             }
 
-            return await EnrichPortfolioAsync(Portfolios[userId]);
+            
+            await EnrichPortfolioAsync(portfolio);
+
+            await db.SaveChangesAsync();
+
+            return portfolio;
         }
 
         public async Task<ISecurityPrice> MarketBuy(ulong userId, Trade trade)
@@ -61,36 +77,135 @@ namespace Finbot.Core.Portfolios
 
             var portfolio = await GetPortfolioAsync(userId);
 
-            lock (portfolio)
+            var tradePrice = trade.Quantity * executionPrice.Price;
+
+            if (portfolio.CashBalance <= tradePrice)
             {
-                var tradePrice = trade.Quantity * executionPrice.Price;
+                throw new Exception("Insufficient funds. AKA too poor");
+            }
 
-                if (portfolio.CashBalance <= tradePrice)
+            using (var transaction = await db.Database.BeginTransactionAsync())
+            {
+                try
                 {
-                    throw new Exception("Insufficient funds. AKA too poor");
+                    portfolio.CashBalance -= tradePrice ?? 0;
+
+                    var position = portfolio.Positions
+                        .FirstOrDefault(m => m.SecurityType == trade.SecurityType && m.Symbol == trade.Symbol);
+
+                    if (position == null)
+                    {
+                        position = new Position() { Symbol = trade.Symbol, SecurityType = trade.SecurityType };
+                        portfolio.Positions.Add(position);
+                        position.PortfolioId = portfolio.PortfolioId;
+                        await db.Positions.AddAsync(position);
+                    }
+
+                    var totalQuantity = position.Quantity + trade.Quantity ?? 0;
+                    var oldWeightedPrice = position.Quantity / totalQuantity * position.AveragePrice;
+                    var newWeightedPrice = trade.Quantity / totalQuantity * executionPrice.Price ?? 0;
+
+                    position.Quantity += trade.Quantity ?? 0;
+                    position.LatestPrice = executionPrice.Price ?? 0;
+                    position.AveragePrice = oldWeightedPrice + newWeightedPrice;
+
+                    await transaction.CommitAsync();
+
+                    await db.SaveChangesAsync();
                 }
-
-                portfolio.CashBalance -= tradePrice ?? 0;
-
-                var position = portfolio.Positions
-                    .FirstOrDefault(m => m.SecurityType == trade.SecurityType && m.Symbol == trade.Symbol);
-
-                if (position == null)
+                catch (Exception)
                 {
-                    position = new Position() { Symbol = trade.Symbol, SecurityType = trade.SecurityType };
-                    portfolio.Positions.Add(position);
+                    await transaction.RollbackAsync();
+                    throw;
                 }
-
-                var totalQuantity = position.Quantity + trade.Quantity;
-                var oldWeightedPrice = position.Quantity / totalQuantity * position.AveragePrice;
-                var newWeightedPrice = trade.Quantity / totalQuantity * executionPrice.Price ?? 0;
-
-                position.Quantity += trade.Quantity;
-                position.LatestPrice = executionPrice.Price ?? 0;
-                position.AveragePrice = oldWeightedPrice + newWeightedPrice;
             }
 
             return executionPrice;
+        }
+
+        public async Task<ISecurityPrice> MarketSell(ulong userId, Trade trade)
+        {
+            if (trade.Quantity != null && trade.Quantity <= 0) throw new Exception("Invalid Quantity");
+
+            var executionPrice = await GetPriceAsync(trade.Symbol, trade.SecurityType);
+
+            var portfolio = await GetPortfolioAsync(userId);
+
+            var position = portfolio.Positions
+                .FirstOrDefault(p => p.SecurityType == trade.SecurityType && p.Symbol == trade.Symbol);
+
+            if (position == null) throw new Exception($"You do not own any {trade.Symbol}");
+
+            var sellQuantity = trade.Quantity ?? position.Quantity;
+
+            if (sellQuantity > position.Quantity) throw new Exception($"You do not have {sellQuantity} of {trade.Symbol}. Maximum that can be sold is: {position.Quantity}");
+
+            using(var transaction = await db.Database.BeginTransactionAsync())
+            {
+                try
+                {
+                    portfolio.CashBalance += sellQuantity* executionPrice.Price ?? 0;
+
+                    if (sellQuantity == position.Quantity) 
+                    {
+                        db.Remove(position);
+                    }
+                    else
+                    {
+                        position.Quantity -= trade.Quantity ?? 0;
+                    }
+
+                    await transaction.CommitAsync();
+                    await db.SaveChangesAsync();
+                }
+                catch (Exception)
+                {
+                    await transaction.RollbackAsync();
+                    throw;
+                }
+            }
+
+            return executionPrice;
+        }
+
+        public async Task<decimal> Liquidate(ulong userId) 
+        {
+            var portfolio = await GetPortfolioAsync(userId);
+
+            var positions = await db.Positions.AsQueryable().Where(m => m.PortfolioId == portfolio.PortfolioId).ToListAsync();
+
+            if (!positions.Any()) throw new Exception("You have no open positions.");
+
+            var portfolioValue = positions.Sum(m => m.MarketValue);
+
+            using(var transaction = await db.Database.BeginTransactionAsync()) 
+            {
+                try
+                {
+                    portfolio.CashBalance += portfolioValue;
+
+                    db.RemoveRange(positions);
+
+                    await transaction.CommitAsync();
+                    await db.SaveChangesAsync();
+                }
+                catch (Exception) 
+                {
+                    await transaction.RollbackAsync();
+                    throw;
+                }
+            }
+
+            return portfolioValue;
+        }
+
+        public async Task SetBalance(ulong userId, decimal newBalance)
+        {
+            var portfolio = await db.Portfolios.AsQueryable().FirstAsync(m => m.DiscordUserId == userId.ToString());
+
+            portfolio.CashBalance = newBalance;
+
+            await db.SaveChangesAsync();
         }
     }
 }

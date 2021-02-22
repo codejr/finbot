@@ -4,7 +4,6 @@ using System.Threading.Tasks;
 
 namespace Finbot.Core.Modules
 {
-    [Group("Pricing")]
     public class PricingModule : ModuleBase<SocketCommandContext>
     {
         private readonly IFinDataClient finDataClient;

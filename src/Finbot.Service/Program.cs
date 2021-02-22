@@ -6,7 +6,9 @@ using Discord.WebSocket;
 using Finbot.Core;
 using Finbot.Core.IEX;
 using Finbot.Core.Portfolios;
+using Finbot.Data;
 using Finbot.Service;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
@@ -45,9 +47,16 @@ namespace finbot
             {
                 var config = hostContext.Configuration;
 
+                var db = new FinbotDataContext();
+
+                db.Database.Migrate();
+
                 services.AddSingleton<IPortfolioService, PortfolioService>();
+                
+                services.AddSingleton(db);
 
                 services.AddSingleton<DiscordSocketClient>();
+
                 services.AddSingleton<CommandService>();
 
                 services.AddTransient<IFinDataClient, FinDataClient>(
