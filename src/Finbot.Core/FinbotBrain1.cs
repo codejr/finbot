@@ -8,6 +8,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Extensions.DependencyInjection;
 using Finbot.Core.Portfolios;
+using System.Text;
 
 namespace Finbot.Core
 {
@@ -89,6 +90,21 @@ namespace Finbot.Core
             return Task.CompletedTask;
         }
 
+        private string GetUsage(CommandInfo command) 
+        {
+            var usage = new StringBuilder();
+            usage.Append($"!{command.Name}");
+            
+            foreach(var param in command.Parameters) 
+            {
+                usage.Append($" [{param.Name}");
+                if (param.IsOptional) usage.Append(":optional");
+                usage.Append("]");
+            }
+
+            return usage.ToString();
+        }
+
         public async Task CommandExecutedAsync(Optional<CommandInfo> command, ICommandContext context, IResult result)
         {
             if (!command.IsSpecified)
@@ -97,7 +113,25 @@ namespace Finbot.Core
             if (result.IsSuccess)
                 return;
 
-            await context.Channel.SendMessageAsync($"Error: {result.ErrorReason}");
+            if (result.Error != null)
+            {
+                switch (result.Error)
+                {
+                    case CommandError.ParseFailed:
+                        await context.Channel.SendMessageAsync(
+                            $"Cannot parse command. Possible improper usage.\r\nUsage: `{GetUsage(command.Value)}`");
+                        break;
+
+                    case CommandError.BadArgCount:
+                        await context.Channel.SendMessageAsync(
+                            $"Missing command arguments.\r\nUsage: `{GetUsage(command.Value)}`");
+                        break;
+
+                    default:
+                        await context.Channel.SendMessageAsync($"Error: {result.ErrorReason}");
+                        break;
+                }
+            }
         }
 
         private async Task MessageReceivedAsync(SocketMessage rawMessage)

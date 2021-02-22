@@ -1,6 +1,7 @@
 ﻿using Finbot.Core.IEX.Models;
 using Microsoft.Extensions.Logging;
 using RestSharp;
+using System;
 using System.Threading.Tasks;
 
 namespace Finbot.Core.IEX
@@ -21,14 +22,22 @@ namespace Finbot.Core.IEX
         {
             var request = new RestRequest($"/crypto/{symbol}/price", DataFormat.Json);
 
-            return await client.GetAsync<CryptoPriceResult>(request);
+            var result = await client.ExecuteAsync<CryptoPriceResult>(request);
+
+            if (result.StatusCode == System.Net.HttpStatusCode.NotFound) throw new ArgumentException($"Symbol {symbol} not found");
+
+            return result.Data;
         }
 
         public async Task<ISecurityPrice> GetPriceAsync(string symbol)
         {
             var request = new RestRequest($"/stock/{symbol}/quote", DataFormat.Json);
 
-            return await client.GetAsync<StockQuote>(request);
+            var result = await client.ExecuteAsync<StockQuote>(request);
+
+            if (result.StatusCode == System.Net.HttpStatusCode.NotFound) throw new ArgumentException($"Symbol {symbol} not found");
+
+            return result.Data;
         }
     }
 }
