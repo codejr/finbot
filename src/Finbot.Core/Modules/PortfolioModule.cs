@@ -3,6 +3,7 @@ using Discord.Commands;
 using Finbot.Core.Models;
 using Finbot.Core.Portfolios;
 using Finbot.Data.Models;
+using Microsoft.Extensions.Logging;
 using System.Linq;
 using System.Threading.Tasks;
 
@@ -11,21 +12,21 @@ namespace Finbot.Core.Modules
     public class PortfolioModule : ModuleBase<SocketCommandContext>
     {
         private readonly IPortfolioService portfolioManager;
+        private readonly ILogger<PortfolioModule> logger;
 
-        public PortfolioModule(IPortfolioService portfolioManager)
+        public PortfolioModule(IPortfolioService portfolioManager, ILogger<PortfolioModule> logger)
         {
             this.portfolioManager = portfolioManager;
+            this.logger = logger;
         }
 
         [Command("portfolio")]
         [Summary("View your or someone else's portfolio")]
         public async Task ViewPortfolio(IUser user = null)
         {
-            var pUser = user ?? Context.Message.Author;
+            user ??= Context.Message.Author;
 
-            var userId = pUser.Id;
-
-            var portfolio = await portfolioManager.GetPortfolioAsync(userId);
+            var portfolio = await portfolioManager.GetPortfolioAsync(user.Id);
 
             var fields = portfolio.Positions
                 .Select(p => new EmbedFieldBuilder()
@@ -39,8 +40,10 @@ namespace Finbot.Core.Modules
                 new EmbedFieldBuilder().WithName("Totals").WithValue($"**Market Value: {portfolio.MarketValue:C}**")
             });
 
+            logger.LogInformation($"{Context.User.Username} - viewd {user?.Username ?? "self"}'s portfolio");
+
             var embed = new EmbedBuilder()
-                .WithTitle($"{pUser.Username}'s Portfolio")
+                .WithTitle($"{user.Username}'s Portfolio")
                 .WithColor(Color.Gold)
                 .WithFields(fields);
 
@@ -54,13 +57,17 @@ namespace Finbot.Core.Modules
             var trade = new Trade() 
             {
                 Quantity = quantity,
-                Symbol = symbol,
+                Symbol = symbol.ToUpper(),
                 SecurityType = SecurityType.Stock
             };
             
             var result = await portfolioManager.MarketBuy(Context.Message.Author.Id, trade);
 
-            await ReplyAsync($":money_with_wings: Stock buy trade executed for *{quantity}* shares of *{result.Symbol}* at *{result.Price?.ToString("C")}*");
+            var msg = $"Stock buy trade executed for *{quantity}* shares of *{result.Symbol}* at *{result.Price?.ToString("C")}*";
+
+            logger.LogInformation($"{Context.User.Username} - {msg}");
+
+            await ReplyAsync($":money_with_wings: {msg}");
         }
 
         [Command("buycrypto")]
@@ -70,13 +77,17 @@ namespace Finbot.Core.Modules
             var trade = new Trade()
             {
                 Quantity = quantity,
-                Symbol = symbol,
+                Symbol = symbol.ToUpper(),
                 SecurityType = SecurityType.Crypto
             };
 
             var result = await portfolioManager.MarketBuy(Context.Message.Author.Id, trade);
 
-            await ReplyAsync($":money_with_wings: Crypto buy trade executed for *{quantity}* of *{result.Symbol}* at *{result.Price?.ToString("C")}*");
+            var msg = $"Crypto buy trade executed for *{quantity}* of *{result.Symbol}* at *{result.Price?.ToString("C")}*";
+
+            logger.LogInformation($"{Context.User.Username} - {msg}");
+
+            await ReplyAsync($":money_with_wings: {msg}");
         }
 
         [Command("sell")]
@@ -86,13 +97,17 @@ namespace Finbot.Core.Modules
             var trade = new Trade()
             {
                 Quantity = quantity,
-                Symbol = symbol,
+                Symbol = symbol.ToUpper(),
                 SecurityType = SecurityType.Stock
             };
 
             var result = await portfolioManager.MarketSell(Context.Message.Author.Id, trade);
 
-            await ReplyAsync($":money_with_wings: Stock sell trade executed for *{quantity?.ToString() ?? "all"}* of *{result.Symbol}* at *{result.Price?.ToString("C")}*");
+            var msg = $"Stock sell trade executed for *{quantity?.ToString() ?? "all"}* of *{result.Symbol}* at *{result.Price?.ToString("C")}*";
+
+            logger.LogInformation($"{Context.User.Username} - {msg}");
+
+            await ReplyAsync($":money_with_wings: {msg}");
         }
 
         [Command("sellcrypto")]
@@ -102,13 +117,17 @@ namespace Finbot.Core.Modules
             var trade = new Trade()
             {
                 Quantity = quantity,
-                Symbol = symbol,
+                Symbol = symbol.ToUpper(),
                 SecurityType = SecurityType.Crypto
             };
 
             var result = await portfolioManager.MarketSell(Context.Message.Author.Id, trade);
 
-            await ReplyAsync($":money_with_wings: Crypto sell trade executed for *{quantity?.ToString() ?? "all"}* of *{result.Symbol}* at *{result.Price?.ToString("C")}*");
+            var msg = $"Crypto sell trade executed for *{quantity?.ToString() ?? "all"}* of *{result.Symbol}* at *{result.Price?.ToString("C")}*";
+
+            logger.LogInformation($"{Context.User.Username} - {msg}");
+
+            await ReplyAsync($":money_with_wings: {msg}");
         }
 
         [Command("liquidate")]
@@ -117,6 +136,8 @@ namespace Finbot.Core.Modules
         public async Task Liquidate()
         {
             var mv = await portfolioManager.Liquidate(Context.Message.Author.Id);
+
+            logger.LogInformation($"{Context.User.Username} liquidated own portfolio for {mv}");
 
             await ReplyAsync($"You sold everything you had for **{mv:C}**");
         }
@@ -128,10 +149,14 @@ namespace Finbot.Core.Modules
         {
             await portfolioManager.SetBalance(user.Id, balance);
 
+            var msg = $"Set {user.Username}'s cash balance to **{balance:C}**";
+
+            logger.LogInformation($"{Context.User.Username} - {msg}");
+
             var embed = new EmbedBuilder()
                 .WithTitle("Balance Update")
                 .WithColor(Color.Blue)
-                .WithDescription($":moneybag: Set {user.Username}'s cash balance to **{balance:C}**")
+                .WithDescription($":moneybag: {msg}")
                 .Build();
 
             await ReplyAsync("", false, embed);

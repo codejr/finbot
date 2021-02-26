@@ -95,11 +95,13 @@ namespace Finbot.Core.Portfolios
 
                     if (position == null)
                     {
-                        position = new Position() { Symbol = trade.Symbol, SecurityType = trade.SecurityType };
+                        position = new Position() { Symbol = trade.Symbol.ToUpper(), SecurityType = trade.SecurityType };
                         portfolio.Positions.Add(position);
                         position.PortfolioId = portfolio.PortfolioId;
                         await db.Positions.AddAsync(position);
                     }
+
+                    position.Symbol = position.Symbol.ToUpper();
 
                     var totalQuantity = position.Quantity + trade.Quantity ?? 0;
                     var oldWeightedPrice = position.Quantity / totalQuantity * position.AveragePrice;

@@ -47,7 +47,7 @@ namespace finbot
             {
                 var config = hostContext.Configuration;
 
-                var db = new FinbotDataContext();
+                var db = new FinbotDataContext(config.GetValue<string>("database:name"));
 
                 db.Database.Migrate();
 

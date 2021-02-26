@@ -1,16 +1,32 @@
 ﻿using Finbot.Data.Models;
+using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
-using System;
 
 namespace Finbot.Data
 {
     public class FinbotDataContext : DbContext
     {
+        private readonly string dbName;
+        private readonly SqliteConnection connection;
+
         public DbSet<Position> Positions { get; set; }
 
         public DbSet<Portfolio> Portfolios { get; set; }
 
+        public FinbotDataContext(string dbName) 
+        {
+            this.dbName = dbName;
+        }
+
+        public FinbotDataContext(SqliteConnection connection)
+        {
+            this.connection = connection;
+        }
+
         protected override void OnConfiguring(DbContextOptionsBuilder options)
-            => options.UseSqlite("Data Source=trading.db");
+        {
+            if (connection != null) options.UseSqlite(connection);
+            else options.UseSqlite($"Data Source={dbName}");
+        }
     }
 }
