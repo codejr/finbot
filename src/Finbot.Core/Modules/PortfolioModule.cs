@@ -21,6 +21,7 @@ namespace Finbot.Core.Modules
         }
 
         [Command("portfolio")]
+        [Alias("pf")]
         [Summary("View your or someone else's portfolio")]
         public async Task ViewPortfolio(IUser user = null)
         {
@@ -51,6 +52,7 @@ namespace Finbot.Core.Modules
         }
 
         [Command("buy")]
+        [Alias("b")]
         [Summary("Buy stock E.g !buy TSLA 10")]
         public async Task StockBuy(string symbol, int quantity)
         {
@@ -71,6 +73,7 @@ namespace Finbot.Core.Modules
         }
 
         [Command("buycrypto")]
+        [Alias("bc")]
         [Summary("Buy crypto E.g !buycrypto BTCUSD 0.25")]
         public async Task CryptoBuy(string symbol, decimal quantity)
         {
@@ -91,6 +94,7 @@ namespace Finbot.Core.Modules
         }
 
         [Command("sell")]
+        [Alias("sell")]
         [Summary("Sell stock. E.g. !sell TSLA 10")]
         public async Task StockSell(string symbol, int? quantity = null)
         {
@@ -111,6 +115,7 @@ namespace Finbot.Core.Modules
         }
 
         [Command("sellcrypto")]
+        [Alias("sc")]
         [Summary("Sell crypto. E.g. !sellcrypto BTCUSD 10")]
         public async Task CryptoSell(string symbol, decimal? quantity = null)
         {
@@ -140,6 +145,19 @@ namespace Finbot.Core.Modules
             logger.LogInformation($"{Context.User.Username} liquidated own portfolio for {mv}");
 
             await ReplyAsync($"You sold everything you had for **{mv:C}**");
+        }
+
+        [Command("liquidate")]
+        [Alias("sellall")]
+        [Summary("Sells all a user's securites and closes all positions.")]
+        [RequireOwner(ErrorMessage = "Only bot owner can force liquidate")]
+        public async Task Liquidate(IUser user)
+        {
+            var mv = await portfolioManager.Liquidate(user.Id);
+
+            logger.LogInformation($"{Context.User.Username} liquidated {user.Username}'s portfolio for {mv}");
+
+            await ReplyAsync($"{user.Username} was forced to sell everything for **{mv:C}**");
         }
 
         [Command("setbalance")]
