@@ -132,6 +132,11 @@ namespace Finbot.Core
                         break;
                 }
             }
+
+            if (result is ExecuteResult eResult)
+            {
+                logger.LogError(eResult.Exception.ToString());
+            }
         }
 
         private async Task MessageReceivedAsync(SocketMessage rawMessage)
