@@ -1,11 +1,9 @@
-﻿using Finbot.Core.IEX.Models;
+namespace Finbot.Core.IEX;
 using System.Threading.Tasks;
+using Finbot.Core.IEX.Models;
 
-namespace Finbot.Core.IEX
+public interface IFinDataClient
 {
-    public interface IFinDataClient
-    {
-        Task<ISecurityPrice> GetCryptoPriceAsync(string symbol);
-        Task<ISecurityPrice> GetPriceAsync(string symbol);
-    }
+    Task<ISecurityPrice> GetCryptoPriceAsync(string symbol);
+    Task<ISecurityPrice> GetPriceAsync(string symbol);
 }

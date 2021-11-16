@@ -1,9 +1,8 @@
-﻿namespace Finbot.Core.IEX.Models
-{
-    public interface ISecurityPrice
-    {
-        string Symbol { get; }
+namespace Finbot.Core.IEX.Models;
 
-        decimal? Price { get; }
-    }
+public interface ISecurityPrice
+{
+    string Symbol { get; }
+
+    decimal? Price { get; }
 }

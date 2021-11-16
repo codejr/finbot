@@ -1,160 +1,180 @@
-﻿using Discord;
+namespace Finbot.Core;
+using System;
+using System.Text;
+using System.Threading;
+using System.Threading.Tasks;
+using Discord;
 using Discord.Commands;
 using Discord.WebSocket;
 using Finbot.Core.IEX;
-using Microsoft.Extensions.Logging;
-using System;
-using System.Threading;
-using System.Threading.Tasks;
-using Microsoft.Extensions.DependencyInjection;
 using Finbot.Core.Portfolios;
-using System.Text;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 
-namespace Finbot.Core
+public class FinbotBrain : IFinbotBrain
 {
-    public class FinbotBrain : IFinbotBrain
+    private readonly DiscordSocketClient client;
+
+    private readonly CommandService commands;
+
+    private readonly IFinDataClient finDataClient;
+
+    private readonly ILogger<FinbotBrain> logger;
+
+    private readonly IPortfolioService portfolioManager;
+
+    private readonly IServiceProvider services;
+
+    private readonly string token;
+
+    public FinbotBrain(string token, IServiceProvider services)
     {
-        private readonly DiscordSocketClient client;
+        this.token = token;
+        this.services = services;
+        this.logger = services.GetRequiredService<ILogger<FinbotBrain>>();
+        this.portfolioManager = services.GetRequiredService<IPortfolioService>();
+        this.finDataClient = services.GetRequiredService<IFinDataClient>();
+        this.client = services.GetRequiredService<DiscordSocketClient>();
+        this.commands = services.GetRequiredService<CommandService>();
+    }
 
-        private readonly CommandService commands;
+    public async Task RunAsync(CancellationToken cancellationToken)
+    {
+        this.client.Log += this.LogAsync;
+        this.client.Ready += this.ReadyAsync;
+        this.client.MessageReceived += this.MessageReceivedAsync;
 
-        private readonly IFinDataClient finDataClient;
+        this.commands.CommandExecuted += this.CommandExecutedAsync;
 
-        private readonly ILogger<FinbotBrain> logger;
+        await this.commands.AddModulesAsync(typeof(FinbotBrain).Assembly, this.services);
 
-        private readonly IPortfolioService portfolioManager;
+        await this.client.LoginAsync(TokenType.Bot, this.token);
+        await this.client.StartAsync();
 
-        private readonly IServiceProvider services;
+        await Task.Delay(Timeout.Infinite, cancellationToken);
+    }
 
-        private readonly string token;
-
-        public FinbotBrain(string token, IServiceProvider services)
+    private Task LogAsync(LogMessage log)
+    {
+        switch (log.Severity)
         {
-            this.token = token;
-            this.services = services;
-            this.logger = services.GetRequiredService<ILogger<FinbotBrain>>();
-            this.portfolioManager = services.GetRequiredService<IPortfolioService>();
-            this.finDataClient = services.GetRequiredService<IFinDataClient>();
-            this.client = services.GetRequiredService<DiscordSocketClient>();
-            this.commands = services.GetRequiredService<CommandService>();
+            case LogSeverity.Critical:
+                this.logger.LogCritical(log.ToString());
+                break;
+
+            case LogSeverity.Error:
+                this.logger.LogError(log.ToString());
+                break;
+
+            case LogSeverity.Warning:
+                this.logger.LogWarning(log.ToString());
+                break;
+
+            case LogSeverity.Info:
+                this.logger.LogInformation(log.ToString());
+                break;
+            case LogSeverity.Verbose:
+                break;
+            case LogSeverity.Debug:
+                break;
+            default:
+                this.logger.LogDebug(log.ToString());
+                break;
         }
 
-        public async Task RunAsync(CancellationToken cancellationToken)
+        return Task.CompletedTask;
+    }
+
+    private Task ReadyAsync()
+    {
+        this.logger.LogInformation($"{this.client.CurrentUser} is connected!");
+
+        return Task.CompletedTask;
+    }
+
+    private string GetUsage(CommandInfo command)
+    {
+        var usage = new StringBuilder();
+        usage.Append($"!{command.Name}");
+
+        foreach (var param in command.Parameters)
         {
-            this.client.Log += LogAsync;
-            this.client.Ready += ReadyAsync;
-            this.client.MessageReceived += MessageReceivedAsync;
-
-            this.commands.CommandExecuted += CommandExecutedAsync;
-            
-            await this.commands.AddModulesAsync(typeof(FinbotBrain).Assembly, services);
-
-            await client.LoginAsync(TokenType.Bot, token);
-            await client.StartAsync();
-
-            await Task.Delay(Timeout.Infinite, cancellationToken);
-        }
-
-        private Task LogAsync(LogMessage log)
-        {
-            switch (log.Severity)
+            usage.Append($" [{param.Name}");
+            if (param.IsOptional)
             {
-                case LogSeverity.Critical:
-                    logger.LogCritical(log.ToString());
+                usage.Append(":optional");
+            }
+
+            usage.Append(']');
+        }
+
+        return usage.ToString();
+    }
+
+    public async Task CommandExecutedAsync(Optional<CommandInfo> command, ICommandContext context, IResult result)
+    {
+        if (!command.IsSpecified)
+        {
+            return;
+        }
+
+        if (result.IsSuccess)
+        {
+            return;
+        }
+
+        if (result.Error != null)
+        {
+            switch (result.Error)
+            {
+                case CommandError.ParseFailed:
+                    await context.Channel.SendMessageAsync(
+                        $"Cannot parse command. Possible improper usage.\r\nUsage: `{this.GetUsage(command.Value)}`");
                     break;
 
-                case LogSeverity.Error:
-                    logger.LogError(log.ToString());
+                case CommandError.BadArgCount:
+                    await context.Channel.SendMessageAsync(
+                        $"Missing command arguments.\r\nUsage: `{this.GetUsage(command.Value)}`");
                     break;
-
-                case LogSeverity.Warning:
-                    logger.LogWarning(log.ToString());
+                case CommandError.UnknownCommand:
                     break;
-
-                case LogSeverity.Info:
-                    logger.LogInformation(log.ToString());
+                case CommandError.ObjectNotFound:
                     break;
-
+                case CommandError.MultipleMatches:
+                    break;
+                case CommandError.UnmetPrecondition:
+                    break;
+                case CommandError.Exception:
+                    break;
+                case CommandError.Unsuccessful:
+                    break;
                 default:
-                    logger.LogDebug(log.ToString());
+                    await context.Channel.SendMessageAsync($"Error: {result.ErrorReason}");
                     break;
             }
-
-            return Task.CompletedTask;
         }
 
-        private Task ReadyAsync()
+        if (result is ExecuteResult eResult)
         {
-            logger.LogInformation($"{client.CurrentUser} is connected!");
-
-            return Task.CompletedTask;
+            this.logger.LogError(eResult.Exception.ToString());
         }
+    }
 
-        private string GetUsage(CommandInfo command) 
+    private async Task MessageReceivedAsync(SocketMessage rawMessage)
+    {
+        this.logger.LogDebug($"Received Message: {rawMessage.Content}");
+
+        var argPos = 0;
+
+        // Ignore non-user messages
+        if (rawMessage is not SocketUserMessage message ||
+            message.Source != MessageSource.User ||
+            !message.HasCharPrefix('!', ref argPos))
         {
-            var usage = new StringBuilder();
-            usage.Append($"!{command.Name}");
-            
-            foreach(var param in command.Parameters) 
-            {
-                usage.Append($" [{param.Name}");
-                if (param.IsOptional) usage.Append(":optional");
-                usage.Append("]");
-            }
-
-            return usage.ToString();
+            return;
         }
 
-        public async Task CommandExecutedAsync(Optional<CommandInfo> command, ICommandContext context, IResult result)
-        {
-            if (!command.IsSpecified)
-                return;
-
-            if (result.IsSuccess)
-                return;
-
-            if (result.Error != null)
-            {
-                switch (result.Error)
-                {
-                    case CommandError.ParseFailed:
-                        await context.Channel.SendMessageAsync(
-                            $"Cannot parse command. Possible improper usage.\r\nUsage: `{GetUsage(command.Value)}`");
-                        break;
-
-                    case CommandError.BadArgCount:
-                        await context.Channel.SendMessageAsync(
-                            $"Missing command arguments.\r\nUsage: `{GetUsage(command.Value)}`");
-                        break;
-
-                    default:
-                        await context.Channel.SendMessageAsync($"Error: {result.ErrorReason}");
-                        break;
-                }
-            }
-
-            if (result is ExecuteResult eResult)
-            {
-                logger.LogError(eResult.Exception.ToString());
-            }
-        }
-
-        private async Task MessageReceivedAsync(SocketMessage rawMessage)
-        {
-            logger.LogDebug($"Received Message: {rawMessage.Content}");
-
-            int argPos = 0;
-
-            // Ignore non-user messages
-            if (rawMessage is not SocketUserMessage message ||
-                message.Source != MessageSource.User ||
-                !message.HasCharPrefix('!', ref argPos))
-            {
-                return;
-            }
-
-            var context = new SocketCommandContext(client, message);
-            await commands.ExecuteAsync(context, argPos, services);
-        }
+        var context = new SocketCommandContext(this.client, message);
+        await this.commands.ExecuteAsync(context, argPos, this.services);
     }
 }

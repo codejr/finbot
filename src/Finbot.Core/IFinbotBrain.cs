@@ -1,10 +1,8 @@
-﻿using System.Threading;
+namespace Finbot.Core;
+using System.Threading;
 using System.Threading.Tasks;
 
-namespace Finbot.Core
+public interface IFinbotBrain
 {
-    public interface IFinbotBrain
-    {
-        Task RunAsync(CancellationToken cancellationToken);
-    }
+    Task RunAsync(CancellationToken cancellationToken);
 }

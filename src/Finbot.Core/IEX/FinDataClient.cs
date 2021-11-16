@@ -1,43 +1,47 @@
-﻿using Finbot.Core.IEX.Models;
-using Microsoft.Extensions.Logging;
-using RestSharp;
+namespace Finbot.Core.IEX;
 using System;
 using System.Threading.Tasks;
+using Finbot.Core.IEX.Models;
+using Microsoft.Extensions.Logging;
+using RestSharp;
 
-namespace Finbot.Core.IEX
+public class FinDataClient : IFinDataClient
 {
-    public class FinDataClient : IFinDataClient
+    private readonly IRestClient client;
+
+    private readonly ILogger logger;
+
+    public FinDataClient(IRestClient client, ILogger logger)
     {
-        private IRestClient client;
+        this.logger = logger;
+        this.client = client;
+    }
 
-        private ILogger logger;
+    public async Task<ISecurityPrice> GetCryptoPriceAsync(string symbol)
+    {
+        var request = new RestRequest($"/crypto/{symbol}/price", DataFormat.Json);
 
-        public FinDataClient(IRestClient client, ILogger logger)
+        var result = await this.client.ExecuteAsync<CryptoPriceResult>(request);
+
+        if (result.StatusCode == System.Net.HttpStatusCode.NotFound)
         {
-            this.logger = logger;
-            this.client = client;
+            throw new ArgumentException($"Symbol {symbol} not found");
         }
 
-        public async Task<ISecurityPrice> GetCryptoPriceAsync(string symbol)
+        return result.Data;
+    }
+
+    public async Task<ISecurityPrice> GetPriceAsync(string symbol)
+    {
+        var request = new RestRequest($"/stock/{symbol}/quote", DataFormat.Json);
+
+        var result = await this.client.ExecuteAsync<StockQuote>(request);
+
+        if (result.StatusCode == System.Net.HttpStatusCode.NotFound)
         {
-            var request = new RestRequest($"/crypto/{symbol}/price", DataFormat.Json);
-
-            var result = await client.ExecuteAsync<CryptoPriceResult>(request);
-
-            if (result.StatusCode == System.Net.HttpStatusCode.NotFound) throw new ArgumentException($"Symbol {symbol} not found");
-
-            return result.Data;
+            throw new ArgumentException($"Symbol {symbol} not found");
         }
 
-        public async Task<ISecurityPrice> GetPriceAsync(string symbol)
-        {
-            var request = new RestRequest($"/stock/{symbol}/quote", DataFormat.Json);
-
-            var result = await client.ExecuteAsync<StockQuote>(request);
-
-            if (result.StatusCode == System.Net.HttpStatusCode.NotFound) throw new ArgumentException($"Symbol {symbol} not found");
-
-            return result.Data;
-        }
+        return result.Data;
     }
 }

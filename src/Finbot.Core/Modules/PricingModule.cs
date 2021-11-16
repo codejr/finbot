@@ -1,40 +1,35 @@
-﻿using Discord.Commands;
-using Finbot.Core.IEX;
+namespace Finbot.Core.Modules;
 using System.Threading.Tasks;
+using Discord.Commands;
+using Finbot.Core.IEX;
 
-namespace Finbot.Core.Modules
+public class PricingModule : ModuleBase<SocketCommandContext>
 {
-    public class PricingModule : ModuleBase<SocketCommandContext>
+    private readonly IFinDataClient finDataClient;
+
+    public PricingModule(IFinDataClient finDataClient) => this.finDataClient = finDataClient;
+
+    private static string FormatPrice(string symbol, decimal? price, decimal quantity) => $":moneybag: Price for {quantity} of **{symbol}** at **${price * quantity:0.00#####}**";
+
+    [Command("price")]
+    [Alias("p")]
+    [Summary("Checks the price of a stock. E.g. !price TSLA")]
+    [Remarks("`!price [Symbol]`")]
+    public async Task StockPriceAsync(string symbol, int quantity = 1)
     {
-        private readonly IFinDataClient finDataClient;
+        var priceResponce = await this.finDataClient.GetPriceAsync(symbol);
 
-        public PricingModule(IFinDataClient finDataClient)
-        {
-            this.finDataClient = finDataClient;
-        }
+        await this.ReplyAsync(FormatPrice(priceResponce.Symbol, priceResponce.Price, quantity));
+    }
 
-        private string FormatPrice(string symbol, decimal? price, decimal quantity) => $":moneybag: Price for {quantity} of **{symbol}** at **${(price*quantity):0.00#####}**";
+    [Command("pricecrypto")]
+    [Alias("pc")]
+    [Summary("Checks the price of a cryptocurrency. Note crypto listings usually include currency at the end. E.g. !pricecrypto BTCUSD")]
+    [Remarks("`!pricecrypto [Symbol]`")]
+    public async Task CryptoPriceAsync(string symbol, decimal quantity = 1.0m)
+    {
+        var priceResponce = await this.finDataClient.GetCryptoPriceAsync(symbol);
 
-        [Command("price")]
-        [Alias("p")]
-        [Summary("Checks the price of a stock. E.g. !price TSLA")]
-        [Remarks("`!price [Symbol]`")]
-        public async Task StockPriceAsync(string symbol, int quantity = 1)
-        {
-            var priceResponce = await finDataClient.GetPriceAsync(symbol);
-
-            await ReplyAsync(FormatPrice(priceResponce.Symbol, priceResponce.Price, quantity));
-        }
-
-        [Command("pricecrypto")]
-        [Alias("pc")]
-        [Summary("Checks the price of a cryptocurrency. Note crypto listings usually include currency at the end. E.g. !pricecrypto BTCUSD")]
-        [Remarks("`!pricecrypto [Symbol]`")]
-        public async Task CryptoPriceAsync(string symbol, decimal quantity = 1.0m)
-        {
-            var priceResponce = await finDataClient.GetCryptoPriceAsync(symbol);
-
-            await ReplyAsync(FormatPrice(priceResponce.Symbol, priceResponce.Price, quantity));
-        }
+        await this.ReplyAsync(FormatPrice(priceResponce.Symbol, priceResponce.Price, quantity));
     }
 }

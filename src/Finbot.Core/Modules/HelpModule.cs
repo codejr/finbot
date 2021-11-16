@@ -1,33 +1,28 @@
-﻿using Discord;
-using Discord.Commands;
+namespace Finbot.Core.Modules;
 using System.Linq;
 using System.Threading.Tasks;
+using Discord;
+using Discord.Commands;
 
-namespace Finbot.Core.Modules
+public class HelpModule : ModuleBase<SocketCommandContext>
 {
-    public class HelpModule : ModuleBase<SocketCommandContext>
+    private readonly CommandService commandService;
+
+    public HelpModule(CommandService commandService) => this.commandService = commandService;
+
+    [Command("help")]
+    public async Task Help()
     {
-        private readonly CommandService commandService;
+        var commands = this.commandService.Commands.ToList();
+        var embedBuilder = new EmbedBuilder().WithTitle("Help").WithColor(Color.Green);
 
-        public HelpModule(CommandService commandService)
+        foreach (var command in commands)
         {
-            this.commandService = commandService;
+            var embedFieldText = command.Summary ?? "No description available\n";
+
+            embedBuilder.AddField(command.Name, embedFieldText);
         }
 
-        [Command("help")]
-        public async Task Help()
-        {
-            var commands = commandService.Commands.ToList();
-            var embedBuilder = new EmbedBuilder().WithTitle("Help").WithColor(Color.Green);
-
-            foreach (var command in commands)
-            {
-                var embedFieldText = command.Summary ?? "No description available\n";
-
-                embedBuilder.AddField(command.Name, embedFieldText);
-            }
-
-            await ReplyAsync("Here's a list of commands and their description: ", false, embedBuilder.Build());
-        }
+        await this.ReplyAsync("Here's a list of commands and their description: ", false, embedBuilder.Build());
     }
 }
