@@ -74,9 +74,7 @@ public class FinbotBrain : IFinbotBrain
                 this.logger.LogInformation(log.ToString());
                 break;
             case LogSeverity.Verbose:
-                break;
             case LogSeverity.Debug:
-                break;
             default:
                 this.logger.LogDebug(log.ToString());
                 break;
