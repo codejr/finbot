@@ -12,13 +12,13 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-    - name: Set Working Dir
-      run: cd src
     - uses: actions/checkout@v2
     - name: Setup .NET
       uses: actions/setup-dotnet@v1
       with:
         dotnet-version: 5.0.x
+    - name: Set Working Dir
+      run: cd src
     - name: Restore dependencies
       run: dotnet restore
     - name: Build
