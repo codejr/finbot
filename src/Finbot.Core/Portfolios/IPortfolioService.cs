@@ -15,4 +15,5 @@ public interface IPortfolioService
     Task<decimal> Liquidate(ulong userId);
 
     Task SetBalance(ulong userId, decimal newBalance);
+    Task AddFunds(ulong userId, decimal amount);
 }

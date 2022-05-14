@@ -24,7 +24,7 @@ public class PortfolioServiceTests
         return context;
     }
 
-    private async Task<PortfolioService> CreatePortfolioServiceAsync(FinbotDataContext ctx = null) => new PortfolioService(null, ctx ?? await CreateContext());
+    private async Task<PortfolioService> CreatePortfolioServiceAsync(FinbotDataContext ctx = null) => new PortfolioService(null, ctx ?? await CreateContext(), null);
 
     [Theory, AutoData]
     public async Task GetPortfolioNoneExistsCreatesNew(ulong userId)

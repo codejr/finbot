@@ -8,33 +8,49 @@ using Finbot.Core.Models;
 using Finbot.Data;
 using Finbot.Data.Models;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging;
 
 public class PortfolioService : IPortfolioService
 {
-    private const decimal defaultBalance = 100_000;
+    private const decimal DefaultBalance = 100_000;
 
     private readonly IFinDataClient client;
 
     private readonly FinbotDataContext db;
 
-    public PortfolioService(IFinDataClient client, FinbotDataContext db)
+    private readonly ILogger logger;
+
+    public PortfolioService(IFinDataClient client, FinbotDataContext db, ILogger logger)
     {
         this.client = client;
         this.db = db;
+        this.logger = logger;
     }
 
-    private async Task<ISecurityPrice> GetPriceAsync(string symbol, SecurityType securityType) => securityType == SecurityType.Crypto ?
-            await this.client.GetCryptoPriceAsync(symbol) :
-            await this.client.GetPriceAsync(symbol);
+    private async Task<ISecurityPrice> GetPriceAsync(string symbol, SecurityType securityType)
+    {
+        try
+        {
+            return securityType == SecurityType.Crypto ?
+                  await this.client.GetCryptoPriceAsync(symbol) :
+                  await this.client.GetPriceAsync(symbol);
+        }
+        catch (ArgumentException)
+        {
+            logger?.LogWarning($"Price check for security {symbol}:{securityType} failed");
+
+            return null;
+        }
+    }
 
     private async Task<Portfolio> EnrichPortfolioAsync(Portfolio portfolio)
     {
         var secPrices = (await Task.WhenAll(portfolio.Positions.Select(m => this.GetPriceAsync(m.Symbol, m.SecurityType))))
-            .ToDictionary(m => m.Symbol.ToUpper(), m => m.Price);
+            .ToDictionary(m => m.Symbol.ToUpper(), m => m?.Price);
 
         foreach (var position in portfolio.Positions)
         {
-            position.LatestPrice = secPrices[position.Symbol.ToUpper()] ?? 0;
+            position.LatestPrice = secPrices[position.Symbol.ToUpper()] ?? position.LatestPrice;
         }
 
         return portfolio;
@@ -51,7 +67,7 @@ public class PortfolioService : IPortfolioService
 
         if (portfolio == null)
         {
-            portfolio = new Portfolio() { DiscordUserId = userId.ToString(), CashBalance = defaultBalance };
+            portfolio = new Portfolio() { DiscordUserId = userId.ToString(), CashBalance = DefaultBalance };
             await this.db.Portfolios.AddAsync(portfolio);
         }
 
@@ -73,6 +89,11 @@ public class PortfolioService : IPortfolioService
         }
 
         var executionPrice = await this.GetPriceAsync(trade.Symbol, trade.SecurityType);
+
+        if (executionPrice == null)
+        {
+            throw new Exception("Cannot price that security. It either does not exist or has been delisted.");
+        }
 
         var portfolio = await this.GetPortfolioAsync(userId);
 
@@ -154,7 +175,7 @@ public class PortfolioService : IPortfolioService
         {
             try
             {
-                portfolio.CashBalance += sellQuantity * executionPrice.Price ?? 0;
+                portfolio.CashBalance += sellQuantity * executionPrice.Price ?? position.LatestPrice;
 
                 if (sellQuantity == position.Quantity)
                 {
@@ -217,6 +238,15 @@ public class PortfolioService : IPortfolioService
         var portfolio = await this.db.Portfolios.AsQueryable().FirstAsync(m => m.DiscordUserId == userId.ToString());
 
         portfolio.CashBalance = newBalance;
+
+        await this.db.SaveChangesAsync();
+    }
+
+    public async Task AddFunds(ulong userId, decimal amount)
+    {
+        var portfolio = await this.db.Portfolios.AsQueryable().FirstAsync(m => m.DiscordUserId == userId.ToString());
+
+        portfolio.CashBalance += amount;
 
         await this.db.SaveChangesAsync();
     }
