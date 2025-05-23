@@ -60,10 +60,11 @@ internal class Program
             services.AddTransient<IFinDataClient, FinDataClient>(
                 serviceManager =>
                 {
-                    var restCLient = new RestClient(config.GetValue<string>("iex:uri"))
+                    var options = new RestClientOptions(config.GetValue<string>("iex:uri"))
                     {
                         Authenticator = new TokenAuthenticator(config.GetValue<string>("iex:token"))
                     };
+                    var restCLient = new RestClient(options);
 
                     return new FinDataClient(restCLient, serviceManager.GetService<ILogger>());
                 });
