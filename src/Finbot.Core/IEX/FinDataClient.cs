@@ -19,7 +19,7 @@ public class FinDataClient : IFinDataClient
 
     public async Task<ISecurityPrice> GetCryptoPriceAsync(string symbol)
     {
-        var request = new RestRequest($"/crypto/{symbol}/price", DataFormat.Json);
+        var request = new RestRequest($"/crypto/{symbol}/price", Method.Get);
 
         var result = await this.client.ExecuteAsync<CryptoPriceResult>(request);
 
@@ -33,7 +33,7 @@ public class FinDataClient : IFinDataClient
 
     public async Task<ISecurityPrice> GetPriceAsync(string symbol)
     {
-        var request = new RestRequest($"/stock/{symbol}/quote", DataFormat.Json);
+        var request = new RestRequest($"/stock/{symbol}/quote", Method.Get);
 
         var result = await this.client.ExecuteAsync<StockQuote>(request);
 

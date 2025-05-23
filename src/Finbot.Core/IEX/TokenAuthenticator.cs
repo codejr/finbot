@@ -1,6 +1,7 @@
 namespace Finbot.Core.IEX;
 using RestSharp;
 using RestSharp.Authenticators;
+using System.Threading.Tasks;
 
 public class TokenAuthenticator : IAuthenticator
 {
@@ -8,5 +9,9 @@ public class TokenAuthenticator : IAuthenticator
 
     public TokenAuthenticator(string token) => this.token = token;
 
-    public void Authenticate(IRestClient client, IRestRequest request) => request.AddQueryParameter("token", this.token);
+    public ValueTask Authenticate(IRestClient client, RestRequest request)
+    {
+        request.AddQueryParameter("token", this.token);
+        return ValueTask.CompletedTask;
+    }
 }

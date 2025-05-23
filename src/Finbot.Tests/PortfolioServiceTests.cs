@@ -52,4 +52,15 @@ public class PortfolioServiceTests
 
     [Theory, AutoData]
     public Task MarketBuyNotOwnedReturnsPrice(Mock<IFinDataClient> finClient) => Task.CompletedTask;
+
+    [Theory, AutoData]
+    public async Task GetPortfolio_CalledTwice_ReturnsSameInstance(ulong userId)
+    {
+        var service = await this.CreatePortfolioServiceAsync();
+
+        var portfolio1 = await service.GetPortfolioAsync(userId);
+        var portfolio2 = await service.GetPortfolioAsync(userId);
+
+        Assert.Same(portfolio1, portfolio2);
+    }
 }
